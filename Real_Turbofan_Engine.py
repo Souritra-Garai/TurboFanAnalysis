@@ -3,11 +3,11 @@ import ambiance
 import numpy as np
 
 def getGasConstant(gamma, c_p) :
-
+    '''Enter c_p in J / kg - K'''
     return (gamma - 1.0) * c_p / gamma
 
 def getSonicSpeed(gamma, gas_constant, temperature) :
-
+    '''Enter gas_constant in J / kg - K and temperature in kelvin'''
     return np.sqrt(gamma * gas_constant * temperature)
 
 def getStagnationTemperatureRatio(gamma, mach_number) :
@@ -371,7 +371,7 @@ class TurboFanAnalysis :
             self._P_19 = self._P_0
             self._M_19 = np.sqrt(
                 (2.0 / (self._gamma_c - 1.0)) * 
-                (np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
+                (np.float_power(product_pi, (self._gamma_c - 1.0) / self._gamma_c) - 1.0)
             )
 
         self._T_19 = self._T_0 * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(self._gamma_c, self._M_19))
@@ -381,14 +381,14 @@ class TurboFanAnalysis :
 
     def _calculatePerformanceParameters(self) :
 
-        self._V_0 = self._M_0 * self._T_0
+        self._V_0 = self._M_0 * self._a_0
 
         self._ST = (1.0 / (1.0 + self._alpha)) * (
             (1.0 + self._f) * self._V_9 - self._V_0 +
-            (1.0 + self._f) * self._R_t * self._T_9 * (1.0 - (self._P_0 / self._P_9)) / (self._gamma_c * self._R_c * self._T_0 * self._V_9)
+            (1.0 + self._f) * self._R_t * (self._a_0 ** 2) * self._T_9 * (1.0 - (self._P_0 / self._P_9)) / (self._gamma_c * self._R_c * self._T_0 * self._V_9)
         ) + (self._alpha / (1.0 + self._alpha)) * (
             self._V_19 - self._V_0 +
-            self._T_19 * (1.0 - (self._P_0 / self._P_19)) / (self._gamma_c * self._T_0 * self._V_19)
+            (self._a_0 ** 2) * self._T_19 * (1.0 - (self._P_0 / self._P_19)) / (self._gamma_c * self._T_0 * self._V_19)
         )
 
         self._TSFC = self._f / ((1.0 + self._alpha) * self._ST)
