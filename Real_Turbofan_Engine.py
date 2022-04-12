@@ -260,7 +260,7 @@ class TurboFanAnalysis :
 
         pass
 
-    def setFanMassFlowRatio(self, alpha) :
+    def setBypassRatio(self, alpha) :
 
         if alpha >= 0 :
 
@@ -411,6 +411,7 @@ class TurboFanAnalysis :
             self._calculateCoreExitConditions()
             self._calculateFanExitConditions()
             self._calculateFanExitConditions()
+            self._calculatePerformanceParameters()
 
             self._analysis_complete = True
             pass
