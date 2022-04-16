@@ -1,6 +1,7 @@
 from shutil import ExecError
 import ambiance
 import numpy as np
+from pip import main
 
 def getGasConstant(gamma, c_p) :
     '''Enter c_p in J / kg - K'''
@@ -23,19 +24,25 @@ def getStagnationPressureRatio(gamma, mach_number) :
 
 def getRamRecovery(mach_number) :
 
-    if mach_number <= 1.0 :
+    # if mach_number <= 1.0 :
 
-        return 1.0
+    #     return 1.0
 
-    elif mach_number <= 5.0 :
+    # elif mach_number <= 5.0 :
 
-        return 1.0 - 0.075 * np.float_power((mach_number - 1.0), 1.35)
+    #     return 1.0 - 0.075 * np.float_power((mach_number - 1.0), 1.35)
 
-    else :
+    # else :
 
-        return 800.0 / (np.power(mach_number, 4) + 935.0)
+    #     return 800.0 / (np.power(mach_number, 4) + 935.0)
 
+    return  np.where(mach_number <= 1.0, 1.0, 
+                np.where(mach_number <= 5.0, 1.0 - 0.075 * np.float_power((np.where(mach_number < 1.0, 1.0, mach_number) - 1.0), 1.35),
+                    800.0 / (np.power(mach_number, 4) + 935.0)
+                )
+            )
 
+    
 class TurboFanAnalysis :
 
     def __init__(self) -> None:
@@ -47,7 +54,7 @@ class TurboFanAnalysis :
 
     def setFlightMachNumber(self, mach_number) :
 
-        if mach_number > 0 :
+        if (mach_number > 0).all() :
 
             self._M_0 = mach_number
             self._analysis_complete = False
@@ -461,6 +468,8 @@ class TurboFanAnalysis :
             raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
     
+if __name__ == '__main__' :
 
-
-    
+    m = np.linspace(0.7, 8, 10)
+    print(m)
+    print(getRamRecovery(m))
