@@ -1,475 +1,505 @@
 from shutil import ExecError
 import ambiance
 import numpy as np
-from pip import main
 
 def getGasConstant(gamma, c_p) :
-    '''Enter c_p in J / kg - K'''
-    return (gamma - 1.0) * c_p / gamma
+	'''Enter c_p in J / kg - K'''
+	return (gamma - 1.0) * c_p / gamma
 
 def getSonicSpeed(gamma, gas_constant, temperature) :
-    '''Enter gas_constant in J / kg - K and temperature in kelvin'''
-    return np.sqrt(gamma * gas_constant * temperature)
+	'''Enter gas_constant in J / kg - K and temperature in kelvin'''
+	return np.sqrt(gamma * gas_constant * temperature)
 
 def getStagnationTemperatureRatio(gamma, mach_number) :
 
-    return 1.0 + 0.5 * (gamma - 1.0) * (mach_number**2)
+	return 1.0 + 0.5 * (gamma - 1.0) * (mach_number**2)
 
 def getStagnationPressureRatio(gamma, mach_number) :
 
-    return np.float_power(
-        getStagnationTemperatureRatio(gamma, mach_number),
-        gamma / (gamma - 1)
-    )
+	return np.float_power(
+		getStagnationTemperatureRatio(gamma, mach_number),
+		gamma / (gamma - 1)
+	)
 
 def getRamRecovery(mach_number) :
 
-    # if mach_number <= 1.0 :
+	# if mach_number <= 1.0 :
 
-    #     return 1.0
+	#     return 1.0
 
-    # elif mach_number <= 5.0 :
+	# elif mach_number <= 5.0 :
 
-    #     return 1.0 - 0.075 * np.float_power((mach_number - 1.0), 1.35)
+	#     return 1.0 - 0.075 * np.float_power((mach_number - 1.0), 1.35)
 
-    # else :
+	# else :
 
-    #     return 800.0 / (np.power(mach_number, 4) + 935.0)
+	#     return 800.0 / (np.power(mach_number, 4) + 935.0)
 
-    return  np.where(mach_number <= 1.0, 1.0, 
-                np.where(mach_number <= 5.0, 1.0 - 0.075 * np.float_power((np.where(mach_number < 1.0, 1.0, mach_number) - 1.0), 1.35),
-                    800.0 / (np.power(mach_number, 4) + 935.0)
-                )
-            )
+	return  np.where(mach_number <= 1.0, 1.0, 
+				np.where(mach_number <= 5.0, 1.0 - 0.075 * np.float_power((np.where(mach_number < 1.0, 1.0, mach_number) - 1.0), 1.35),
+					800.0 / (np.power(mach_number, 4) + 935.0)
+				)
+			)
 
     
 class TurboFanAnalysis :
 
-    def __init__(self) -> None:
+	def __init__(self) -> None:
 
-        self._initialized = False
-        self._analysis_complete = False
+		self._initialized = False
+		self._analysis_complete = False
 
-        pass
+		pass
 
-    def setFlightMachNumber(self, mach_number) :
+	def setFlightMachNumber(self, mach_number) :
 
-        if (mach_number > 0).all() :
+		if np.all(mach_number > 0) :
 
-            self._M_0 = mach_number
-            self._analysis_complete = False
-            pass
+			self._M_0 = mach_number
+			self._analysis_complete = False
+			pass
 
-        else :
+		else :
 
-            raise ValueError('Mach number must be positive. Given value : ' + str(mach_number))
+			raise ValueError('Mach number must be positive. Given value : ' + str(mach_number))
 
-    def setFlightConditions(self, altitude) :
-        '''Enter altitude in metres'''
+	def setFlightConditions(self, altitude) :
+		'''Enter altitude in metres'''
 
-        if altitude > 0 :
+		if np.all(altitude > 0) :
 
-            air = ambiance.Atmosphere(altitude)
+			air = ambiance.Atmosphere(altitude)
 
-            self._T_0 = air.temperature[0]
-            self._P_0 = air.pressure[0]
-            self._a_0 = air.speed_of_sound[0]
+			self._T_0 = air.temperature
+			self._P_0 = air.pressure
+			self._a_0 = air.speed_of_sound
 
-            self._gamma_c   = ambiance.CONST.kappa
-            self._R_c       = ambiance.CONST.R
-            self._c_pc      = self._gamma_c * self._R_c / (self._gamma_c - 1.0)
+			self._gamma_c   = ambiance.CONST.kappa
+			self._R_c       = ambiance.CONST.R
+			self._c_pc      = self._gamma_c * self._R_c / (self._gamma_c - 1.0)
 
-            self._analysis_complete = False
-            pass
+			self._analysis_complete = False
+			pass
 
-        else :
+		else :
 
-            raise ValueError('Altitude must be positive. Given value : ' + str(altitude))
+			raise ValueError('Altitude must be positive. Given value : ' + str(altitude))
 
-    def setFuelInfo(self, 
-        heat_generated_from_combustion,
-        gamma_of_combustion_products = ambiance.CONST.kappa,
-        heat_capacity_of_combustion_products = ambiance.CONST.kappa * ambiance.CONST.R / (ambiance.CONST.kappa - 1.0)
-    ) :
-        '''Enter heat in J / kg and heat capacity in J / kg - K'''
-    
-        if gamma_of_combustion_products > 0 :
+	def setFuelInfo(self, 
+		heat_generated_from_combustion,
+		gamma_of_combustion_products = ambiance.CONST.kappa,
+		heat_capacity_of_combustion_products = ambiance.CONST.kappa * ambiance.CONST.R / (ambiance.CONST.kappa - 1.0)
+	) :
+		'''Enter heat in J / kg and heat capacity in J / kg - K'''
 
-            self._gamma_t = gamma_of_combustion_products
-            self._analysis_complete = False
+		if gamma_of_combustion_products > 0 :
 
-        else :
+			self._gamma_t = gamma_of_combustion_products
+			self._analysis_complete = False
 
-            raise ValueError('Gamma must be positive. Given value : ' + str(gamma_of_combustion_products))
+		else :
 
-        if heat_generated_from_combustion > 0 :
+			raise ValueError('Gamma must be positive. Given value : ' + str(gamma_of_combustion_products))
 
-            self._h_PR = heat_generated_from_combustion
-            self._analysis_complete = False
+		if heat_generated_from_combustion > 0 :
 
-        else :
+			self._h_PR = heat_generated_from_combustion
+			self._analysis_complete = False
 
-            raise ValueError('Heat generated must be positive. Given value : ' + str(heat_generated_from_combustion))
+		else :
 
-        if heat_capacity_of_combustion_products > 0 :
+			raise ValueError('Heat generated must be positive. Given value : ' + str(heat_generated_from_combustion))
 
-            self._c_pt = heat_capacity_of_combustion_products
-            self._analysis_complete = False
+		if heat_capacity_of_combustion_products > 0 :
 
-        else :
+			self._c_pt = heat_capacity_of_combustion_products
+			self._analysis_complete = False
 
-            raise ValueError('Heat capacity must be positive. Given value : ' + str(heat_capacity_of_combustion_products))
+		else :
 
-        pass
+			raise ValueError('Heat capacity must be positive. Given value : ' + str(heat_capacity_of_combustion_products))
 
-    def setTurbineProperties(self,
-        inlet_total_temperature,
-        polytropic_efficiency = 1.0,
-        mechanical_efficiency = 1.0
-    ) :
-        '''Enter temperature in kelvin'''
-        if inlet_total_temperature > 0 :
+		pass
 
-            self._T_t4 = inlet_total_temperature
-            self._analysis_complete = False
+	def setTurbineProperties(self,
+		inlet_total_temperature,
+		polytropic_efficiency = 1.0,
+		mechanical_efficiency = 1.0
+	) :
+		'''Enter temperature in kelvin'''
+		if inlet_total_temperature > 0 :
 
-        else :
+			self._T_t4 = inlet_total_temperature
+			self._analysis_complete = False
 
-            raise ValueError('Temperature must be positive. Given value : ' + str(inlet_total_temperature))
+		else :
 
-        if polytropic_efficiency > 0 and polytropic_efficiency <= 1:
+			raise ValueError('Temperature must be positive. Given value : ' + str(inlet_total_temperature))
 
-            self._e_t = polytropic_efficiency
-            self._analysis_complete = False
+		if polytropic_efficiency > 0 and polytropic_efficiency <= 1:
 
-        else :
+			self._e_t = polytropic_efficiency
+			self._analysis_complete = False
 
-            raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(polytropic_efficiency))
+		else :
 
-        if mechanical_efficiency > 0 and mechanical_efficiency <= 1:
+			raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(polytropic_efficiency))
 
-            self._eta_m = mechanical_efficiency
-            self._analysis_complete = False
+		if mechanical_efficiency > 0 and mechanical_efficiency <= 1:
 
-        else :
+			self._eta_m = mechanical_efficiency
+			self._analysis_complete = False
 
-            raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(mechanical_efficiency))
+		else :
 
-        pass
+			raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(mechanical_efficiency))
 
-    def setCompressorProperties(self,
-        compression_ratio,
-        polytropic_efficiency = 1.0
-    ) :
+		pass
 
-        if compression_ratio >= 1 :
+	def setCompressorProperties(self,
+		compression_ratio,
+		polytropic_efficiency = 1.0
+	) :
 
-            self._pi_c = compression_ratio
-            self._analysis_complete = False
+		if np.all(compression_ratio >= 1) :
 
-        else :
+			self._pi_c = compression_ratio
+			self._analysis_complete = False
 
-            raise ValueError('Compression ratio must be greater than or equal to 1. Given value : ' + str(compression_ratio))
+		else :
 
-        if polytropic_efficiency > 0 and polytropic_efficiency <= 1:
+			raise ValueError('Compression ratio must be greater than or equal to 1. Given value : ' + str(compression_ratio))
 
-            self._e_c = polytropic_efficiency
-            self._analysis_complete = False
+		if polytropic_efficiency > 0 and polytropic_efficiency <= 1:
 
-        else :
+			self._e_c = polytropic_efficiency
+			self._analysis_complete = False
 
-            raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(polytropic_efficiency))
+		else :
 
-        pass
+			raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(polytropic_efficiency))
 
-    def setFanProperties(self,
-        compression_ratio,
-        polytropic_efficiency = 1.0
-    ) :
+		pass
 
-        if compression_ratio >= 1 :
+	def setFanProperties(self,
+		compression_ratio,
+		polytropic_efficiency = 1.0
+	) :
 
-            self._pi_f = compression_ratio
-            self._analysis_complete = False
+		if np.all(compression_ratio >= 1) :
 
-        else :
+			self._pi_f = compression_ratio
+			self._analysis_complete = False
 
-            raise ValueError('Compression ratio must be greater than or equal to 1. Given value : ' + str(compression_ratio))
+		else :
 
-        if polytropic_efficiency > 0 and polytropic_efficiency <= 1:
+			raise ValueError('Compression ratio must be greater than or equal to 1. Given value : ' + str(compression_ratio))
 
-            self._e_f = polytropic_efficiency
-            self._analysis_complete = False
+		if polytropic_efficiency > 0 and polytropic_efficiency <= 1:
 
-        else :
+			self._e_f = polytropic_efficiency
+			self._analysis_complete = False
 
-            raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(polytropic_efficiency))
+		else :
 
-        pass
+			raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(polytropic_efficiency))
 
-    def setInletOutletProperties(self,
-        diffuser_max_total_pressure_ratio = 1.0,
-        fan_nozzle_total_pressure_ratio = 1.0,
-        nozzle_total_pressure_ratio = 1.0
-    ) :
+		pass
 
-        if diffuser_max_total_pressure_ratio > 0 and diffuser_max_total_pressure_ratio <= 1 :
+	def setInletOutletProperties(self,
+		diffuser_max_total_pressure_ratio = 1.0,
+		fan_nozzle_total_pressure_ratio = 1.0,
+		nozzle_total_pressure_ratio = 1.0
+	) :
 
-            self._pi_dmax = diffuser_max_total_pressure_ratio
-            self._analysis_complete = False
+		if diffuser_max_total_pressure_ratio > 0 and diffuser_max_total_pressure_ratio <= 1 :
 
-        else :
+			self._pi_dmax = diffuser_max_total_pressure_ratio
+			self._analysis_complete = False
 
-            raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(diffuser_max_total_pressure_ratio))
+		else :
 
-        if fan_nozzle_total_pressure_ratio > 0 and fan_nozzle_total_pressure_ratio <= 1 :
+			raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(diffuser_max_total_pressure_ratio))
 
-            self._pi_fn = fan_nozzle_total_pressure_ratio
-            self._analysis_complete = False
+		if fan_nozzle_total_pressure_ratio > 0 and fan_nozzle_total_pressure_ratio <= 1 :
 
-        else :
+			self._pi_fn = fan_nozzle_total_pressure_ratio
+			self._analysis_complete = False
 
-            raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(fan_nozzle_total_pressure_ratio))
+		else :
 
-        if nozzle_total_pressure_ratio > 0 and nozzle_total_pressure_ratio <= 1 :
+			raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(fan_nozzle_total_pressure_ratio))
 
-            self._pi_n = nozzle_total_pressure_ratio
-            self._analysis_complete = False
+		if nozzle_total_pressure_ratio > 0 and nozzle_total_pressure_ratio <= 1 :
 
-        else :
+			self._pi_n = nozzle_total_pressure_ratio
+			self._analysis_complete = False
 
-            raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(nozzle_total_pressure_ratio))
+		else :
 
-        pass
+			raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(nozzle_total_pressure_ratio))
 
-    def setBurnerProperties(self,
-        total_pressure_ratio = 1.0,
-        efficiency = 1.0
-    ) :
+		pass
 
-        if total_pressure_ratio > 0 and total_pressure_ratio <= 1 :
+	def setBurnerProperties(self,
+		total_pressure_ratio = 1.0,
+		efficiency = 1.0
+	) :
 
-            self._pi_b = total_pressure_ratio
-            self._analysis_complete = False
+		if total_pressure_ratio > 0 and total_pressure_ratio <= 1 :
 
-        else :
+			self._pi_b = total_pressure_ratio
+			self._analysis_complete = False
 
-            raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(total_pressure_ratio))
+		else :
 
-        if efficiency > 0 and efficiency <= 1:
+			raise ValueError('Pressure ratio must be in the interval (0,1]. Given value : ' + str(total_pressure_ratio))
 
-            self._eta_b = efficiency
-            self._analysis_complete = False
+		if efficiency > 0 and efficiency <= 1:
 
-        else :
+			self._eta_b = efficiency
+			self._analysis_complete = False
 
-            raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(efficiency))
+		else :
 
-        pass
+			raise ValueError('Efficiency must belong to the interval (0, 1]. Given value : ' + str(efficiency))
 
-    def setBypassRatio(self, alpha) :
+		pass
 
-        if alpha >= 0 :
+	def setBypassRatio(self, alpha) :
 
-            self._alpha = alpha
-            self._analysis_complete = False
+		if np.all(alpha >= 0) :
 
-        else :
+			self._alpha = alpha
+			self._analysis_complete = False
 
-            raise ValueError('Mass flow ratio must be greater than or equal to 0. Given value : ' + str(alpha))
+		else :
 
-        pass
+			raise ValueError('Mass flow ratio must be greater than or equal to 0. Given value : ' + str(alpha))
 
-    def initializeProblem(self) :
+		pass
 
-        attributes = [
-            '_alpha',
-            '_eta_b',
-            '_pi_b',
-            '_pi_n',
-            '_pi_fn',
-            '_pi_dmax',
-            '_e_f',
-            '_pi_f',
-            '_e_c',
-            '_pi_c',
-            '_eta_m',
-            '_e_t',
-            '_T_t4',
-            '_c_pt',
-            '_h_PR',
-            '_gamma_t',
-            '_c_pc',
-            '_gamma_c',
-            '_R_c',
-            '_a_0',
-            '_P_0',
-            '_T_0',
-            '_M_0'
-        ]
+	def initializeProblem(self) :
 
-        for attribute in attributes :
+		attributes = [
+			'_alpha',
+			'_eta_b',
+			'_pi_b',
+			'_pi_n',
+			'_pi_fn',
+			'_pi_dmax',
+			'_e_f',
+			'_pi_f',
+			'_e_c',
+			'_pi_c',
+			'_eta_m',
+			'_e_t',
+			'_T_t4',
+			'_c_pt',
+			'_h_PR',
+			'_gamma_t',
+			'_c_pc',
+			'_gamma_c',
+			'_R_c',
+			'_a_0',
+			'_P_0',
+			'_T_0',
+			'_M_0'
+		]
 
-            if not hasattr(self, attribute) :
+		for attribute in attributes :
 
-                raise AttributeError(attribute + ' not initialized.')
+			if not hasattr(self, attribute) :
 
-        self._initialized = True
+				raise AttributeError(attribute + ' not initialized.')
 
-        pass
+		self._initialized = True
 
-    def _initializeRatios(self) :
+		pass
 
-        self._tau_r = getStagnationTemperatureRatio(self._gamma_c, self._M_0)
-        self._pi_r  = getStagnationPressureRatio(self._gamma_c, self._M_0)
+	def _initializeRatios(self) :
 
-        self._pi_d  = self._pi_dmax * getRamRecovery(self._M_0)
-        
-        self._tau_l = self._c_pt * self._T_t4 / (self._c_pc * self._T_0)
+		self._tau_r = getStagnationTemperatureRatio(self._gamma_c, self._M_0)
+		self._pi_r  = getStagnationPressureRatio(self._gamma_c, self._M_0)
 
-        self._tau_c = np.float_power(self._pi_c, (self._gamma_c - 1.0) / (self._gamma_c * self._e_c))
-        self._tau_f = np.float_power(self._pi_f, (self._gamma_c - 1.0) / (self._gamma_c * self._e_f))
+		self._pi_d  = self._pi_dmax * getRamRecovery(self._M_0)
+		
+		self._tau_l = self._c_pt * self._T_t4 / (self._c_pc * self._T_0)
 
-        pass
+		self._tau_c = np.float_power(self._pi_c, (self._gamma_c - 1.0) / (self._gamma_c * self._e_c))
+		self._tau_f = np.float_power(self._pi_f, (self._gamma_c - 1.0) / (self._gamma_c * self._e_f))
 
-    def _calculateFuelRatio(self) :
+		pass
 
-        self._f = (self._tau_l - self._tau_r * self._tau_c) / ((self._eta_b * self._h_PR / (self._c_pc * self._T_0)) - self._tau_l)
+	def _calculateFuelRatio(self) :
 
-        pass
+		self._f = (self._tau_l - self._tau_r * self._tau_c) / ((self._eta_b * self._h_PR / (self._c_pc * self._T_0)) - self._tau_l)
 
-    def _performTurbineEnergyBalance(self) :
+		pass
 
-        self._tau_t = 1.0 - (1.0 / (self._eta_m * (1 + self._f))) * (self._tau_r / self._tau_l) * (self._tau_c - 1.0 + self._alpha * (self._tau_f - 1.0))
-        self._pi_t  = np.float_power(self._tau_t, self._gamma_t / ((self._gamma_t - 1.0) * self._e_t))
+	def _performTurbineEnergyBalance(self) :
 
-        pass
+		self._tau_t = 1.0 - (1.0 / (self._eta_m * (1 + self._f))) * (self._tau_r / self._tau_l) * (self._tau_c - 1.0 + self._alpha * (self._tau_f - 1.0))
+		self._pi_t  = np.float_power(self._tau_t, self._gamma_t / ((self._gamma_t - 1.0) * self._e_t))
 
-    def _calculateCoreExitConditions(self) :
+		pass
 
-        product_pi = self._pi_r * self._pi_d * self._pi_c * self._pi_b * self._pi_t * self._pi_n
+	def _calculateCoreExitConditions(self) :
 
-        self._M_9 = 1.0
-        self._P_9 = self._P_0 * product_pi / getStagnationPressureRatio(self._gamma_t, self._M_9)
-        
-        if self._P_9 < self._P_0 :
+		product_pi = self._pi_r * self._pi_d * self._pi_c * self._pi_b * self._pi_t * self._pi_n
 
-            self._P_9 = self._P_0
-            self._M_9 = np.sqrt(
-                (2.0 / (self._gamma_t - 1.0)) * 
-                (np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
-            )
+		self._P_9 = self._P_0 * product_pi / getStagnationPressureRatio(self._gamma_t, 1.0)
 
-        self._R_t = getGasConstant(self._gamma_t, self._c_pt)
-        self._T_9 = self._T_0 * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (self._c_pc / self._c_pt)
-        self._V_9 = self._M_9 * getSonicSpeed(self._gamma_t, self._R_t, self._T_9)
+		# if self._P_9 < self._P_0 :
 
-        pass
+		# 	self._P_9 = self._P_0
+		# 	self._M_9 = np.sqrt(
+		# 		(2.0 / (self._gamma_t - 1.0)) * 
+		# 		(np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
+		# 	)
 
-    def _calculateFanExitConditions(self) :
+		self._M_9 = np.where(
+			self._P_9 < self._P_0, 
+			(2.0 / (self._gamma_t - 1.0)) * 
+			(np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0),
+			1.0
+		)
 
-        product_pi = self._pi_r * self._pi_d * self._pi_f * self._pi_fn
+		self._P_9 = np.where(self._P_9 < self._P_0, self._P_0, self._P_9)
+		
+		self._R_t = getGasConstant(self._gamma_t, self._c_pt)
+		self._T_9 = self._T_0 * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (self._c_pc / self._c_pt)
+		self._V_9 = self._M_9 * getSonicSpeed(self._gamma_t, self._R_t, self._T_9)
 
-        self._M_19 = 1.0
-        self._P_19 = self._P_0 * product_pi / getStagnationPressureRatio(self._gamma_c, self._M_19)
+		pass
 
-        if self._P_19 < self._P_0 :
+	def _calculateFanExitConditions(self) :
 
-            self._P_19 = self._P_0
-            self._M_19 = np.sqrt(
-                (2.0 / (self._gamma_c - 1.0)) * 
-                (np.float_power(product_pi, (self._gamma_c - 1.0) / self._gamma_c) - 1.0)
-            )
+		product_pi = self._pi_r * self._pi_d * self._pi_f * self._pi_fn
 
-        self._T_19 = self._T_0 * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(self._gamma_c, self._M_19))
-        self._V_19 = self._M_19 * self._a_0 * np.sqrt(self._T_19 / self._T_0)
+		self._P_19 = self._P_0 * product_pi / getStagnationPressureRatio(self._gamma_c, 1.0)
 
-        pass
+		# if self._P_19 < self._P_0 :
 
-    def _calculatePerformanceParameters(self) :
+		# 	self._P_19 = self._P_0
+		# 	self._M_19 = np.sqrt(
+		# 		(2.0 / (self._gamma_c - 1.0)) * 
+		# 		(np.float_power(product_pi, (self._gamma_c - 1.0) / self._gamma_c) - 1.0)
+		# 	)
 
-        self._V_0 = self._M_0 * self._a_0
+		self._M_19 = np.where(
+			self._P_19 < self._P_0,
+			(2.0 / (self._gamma_c - 1.0)) * 
+			(np.float_power(product_pi, (self._gamma_c - 1.0) / self._gamma_c) - 1.0),
+			1.0
+		)
 
-        self._ST = (1.0 / (1.0 + self._alpha)) * (
-            (1.0 + self._f) * self._V_9 - self._V_0 +
-            (1.0 + self._f) * self._R_t * (self._a_0 ** 2) * self._T_9 * (1.0 - (self._P_0 / self._P_9)) / (self._gamma_c * self._R_c * self._T_0 * self._V_9)
-        ) + (self._alpha / (1.0 + self._alpha)) * (
-            self._V_19 - self._V_0 +
-            (self._a_0 ** 2) * self._T_19 * (1.0 - (self._P_0 / self._P_19)) / (self._gamma_c * self._T_0 * self._V_19)
-        )
+		self._P_19 = np.where(self._P_19 < self._P_0, self._P_0, self._P_19)
 
-        self._TSFC = self._f / ((1.0 + self._alpha) * self._ST)
+		self._T_19 = self._T_0 * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(self._gamma_c, self._M_19))
+		self._V_19 = self._M_19 * self._a_0 * np.sqrt(self._T_19 / self._T_0)
 
-        Delta_KE = 0.5 * ( (1.0 + self._f) * (self._V_9 ** 2) + self._alpha * (self._V_19 ** 2) - (1.0 + self._alpha) * (self._V_0 ** 2) )
+		pass
 
-        self._eta_T = Delta_KE / (self._f * self._h_PR)
+	def _calculatePerformanceParameters(self) :
 
-        self._eta_P = (1.0 + self._alpha) * self._ST * self._V_0 / Delta_KE
+		self._V_0 = self._M_0 * self._a_0
 
-        pass
+		self._ST = (1.0 / (1.0 + self._alpha)) * (
+			(1.0 + self._f) * self._V_9 - self._V_0 +
+			(1.0 + self._f) * self._R_t * (self._a_0 ** 2) * self._T_9 * (1.0 - (self._P_0 / self._P_9)) / (self._gamma_c * self._R_c * self._T_0 * self._V_9)
+		) + (self._alpha / (1.0 + self._alpha)) * (
+			self._V_19 - self._V_0 +
+			(self._a_0 ** 2) * self._T_19 * (1.0 - (self._P_0 / self._P_19)) / (self._gamma_c * self._T_0 * self._V_19)
+		)
 
-    def performAnalysis(self) :
+		self._TSFC = self._f / ((1.0 + self._alpha) * self._ST)
 
-        if self._initialized :
+		Delta_KE = 0.5 * ( (1.0 + self._f) * (self._V_9 ** 2) + self._alpha * (self._V_19 ** 2) - (1.0 + self._alpha) * (self._V_0 ** 2) )
 
-            self._initializeRatios()
-            self._calculateFuelRatio()
-            self._performTurbineEnergyBalance()
-            self._calculateCoreExitConditions()
-            self._calculateFanExitConditions()
-            self._calculateFanExitConditions()
-            self._calculatePerformanceParameters()
+		self._eta_T = Delta_KE / (self._f * self._h_PR)
 
-            self._analysis_complete = True
-            pass
-        
-        else :
+		self._eta_P = (1.0 + self._alpha) * self._ST * self._V_0 / Delta_KE
 
-            raise ExecError("Analysis needs to be initialized with initializeProblem()")
+		pass
 
-    def getSpecificThrust(self) :
+	def performAnalysis(self) :
 
-        if self._analysis_complete :
+		if self._initialized :
 
-            return self._ST
+			self._initializeRatios()
+			self._calculateFuelRatio()
+			self._performTurbineEnergyBalance()
+			self._calculateCoreExitConditions()
+			self._calculateFanExitConditions()
+			self._calculateFanExitConditions()
+			self._calculatePerformanceParameters()
 
-        else :
+			self._analysis_complete = True
+			pass
+		
+		else :
 
-            raise ExecError("Value not evaluated yet. Run performAnalysis()")
+			raise ExecError("Analysis needs to be initialized with initializeProblem()")
 
-    def getThrustSpecificFuelConsumtion(self) :
+	def getSpecificThrust(self) :
 
-        if self._analysis_complete :
+		if self._analysis_complete :
 
-            return self._TSFC
+			return self._ST
 
-        else :
+		else :
 
-            raise ExecError("Value not evaluated yet. Run performAnalysis()")
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
-    def getThermalEfficiency(self) :
+	def getThrustSpecificFuelConsumtion(self) :
 
-        if self._analysis_complete :
+		if self._analysis_complete :
 
-            return self._eta_T
+			return self._TSFC
 
-        else :
+		else :
 
-            raise ExecError("Value not evaluated yet. Run performAnalysis()")
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
-    def getPropulsiveEfficiency(self) :
+	def getThermalEfficiency(self) :
 
-        if self._analysis_complete :
+		if self._analysis_complete :
 
-            return self._eta_P
+			return self._eta_T
 
-        else :
+		else :
 
-            raise ExecError("Value not evaluated yet. Run performAnalysis()")
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
+
+	def getPropulsiveEfficiency(self) :
+
+		if self._analysis_complete :
+
+			return self._eta_P
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
     
 if __name__ == '__main__' :
 
-    m = np.linspace(0.7, 8, 10)
-    print(m)
-    print(getRamRecovery(m))
+	engine = TurboFanAnalysis()
+
+	engine.setFlightMachNumber(0.8)
+	engine.setFlightConditions(5E3)
+	engine.setFuelInfo(10E8)
+	engine.setInletOutletProperties()
+	engine.setBurnerProperties()
+	engine.setCompressorProperties(25)
+	engine.setFanProperties(1.5)
+	engine.setTurbineProperties(1600)
+	engine.setBypassRatio(5)
+	
+	engine.initializeProblem()
+	engine.performAnalysis()
+
+	print(engine.getSpecificThrust())
+
+	pass
