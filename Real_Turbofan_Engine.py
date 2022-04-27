@@ -1,10 +1,16 @@
-from shutil import ExecError
-import ambiance
+from time import sleep
 import numpy as np
+
+from shutil import ExecError
+from ambiance import CONST, Atmosphere
 
 def getGasConstant(gamma, c_p) :
 	'''Enter c_p in J / kg - K'''
 	return (gamma - 1.0) * c_p / gamma
+
+def getHeatCapacity(gamma, R) :
+	'''Enter R in J / kg - K'''
+	return gamma * R / (gamma - 1.0)
 
 def getSonicSpeed(gamma, gas_constant, temperature) :
 	'''Enter gas_constant in J / kg - K and temperature in kelvin'''
@@ -22,7 +28,9 @@ def getStagnationPressureRatio(gamma, mach_number) :
 	)
 
 def getRamRecovery(mach_number) :
-
+	'''Vectorized for array input.
+	   Mach number should be an ndarray.'''
+	
 	# if mach_number <= 1.0 :
 
 	#     return 1.0
@@ -35,14 +43,17 @@ def getRamRecovery(mach_number) :
 
 	#     return 800.0 / (np.power(mach_number, 4) + 935.0)
 
-	return  np.where(mach_number <= 1.0, 1.0, 
-				np.where(mach_number <= 5.0, 1.0 - 0.075 * np.float_power((np.where(mach_number < 1.0, 1.0, mach_number) - 1.0), 1.35),
+	return  np.where(mach_number <= 1.0,
+				1.0,
+			# else
+				np.where(mach_number <= 5.0,
+					1.0 - 0.075 * np.float_power((np.fmax(mach_number, 1.0) - 1.0), 1.35),
+				# else
 					800.0 / (np.power(mach_number, 4) + 935.0)
 				)
 			)
 
-    
-class TurboFanAnalysis :
+class TurboFanEngine :
 
 	def __init__(self) -> None:
 
@@ -51,44 +62,10 @@ class TurboFanAnalysis :
 
 		pass
 
-	def setFlightMachNumber(self, mach_number) :
-
-		if np.all(mach_number > 0) :
-
-			self._M_0 = mach_number
-			self._analysis_complete = False
-			pass
-
-		else :
-
-			raise ValueError('Mach number must be positive. Given value : ' + str(mach_number))
-
-	def setFlightConditions(self, altitude) :
-		'''Enter altitude in metres'''
-
-		if np.all(altitude > 0) :
-
-			air = ambiance.Atmosphere(altitude)
-
-			self._T_0 = air.temperature
-			self._P_0 = air.pressure
-			self._a_0 = air.speed_of_sound
-
-			self._gamma_c   = ambiance.CONST.kappa
-			self._R_c       = ambiance.CONST.R
-			self._c_pc      = self._gamma_c * self._R_c / (self._gamma_c - 1.0)
-
-			self._analysis_complete = False
-			pass
-
-		else :
-
-			raise ValueError('Altitude must be positive. Given value : ' + str(altitude))
-
-	def setFuelInfo(self, 
+	def setFuelProperties(self, 
 		heat_generated_from_combustion,
-		gamma_of_combustion_products = ambiance.CONST.kappa,
-		heat_capacity_of_combustion_products = ambiance.CONST.kappa * ambiance.CONST.R / (ambiance.CONST.kappa - 1.0)
+		gamma_of_combustion_products = CONST.kappa,
+		heat_capacity_of_combustion_products = CONST.kappa * CONST.R / (CONST.kappa - 1.0)
 	) :
 		'''Enter heat in J / kg and heat capacity in J / kg - K'''
 
@@ -119,15 +96,17 @@ class TurboFanAnalysis :
 
 			raise ValueError('Heat capacity must be positive. Given value : ' + str(heat_capacity_of_combustion_products))
 
+		self._R_t = getGasConstant(self._gamma_t, self._c_pt)
+
 		pass
 
 	def setTurbineProperties(self,
-		inlet_total_temperature,
+		inlet_total_temperature : np.ndarray,
 		polytropic_efficiency = 1.0,
 		mechanical_efficiency = 1.0
 	) :
 		'''Enter temperature in kelvin'''
-		if inlet_total_temperature > 0 :
+		if np.all(inlet_total_temperature > 0) :
 
 			self._T_t4 = inlet_total_temperature
 			self._analysis_complete = False
@@ -157,7 +136,7 @@ class TurboFanAnalysis :
 		pass
 
 	def setCompressorProperties(self,
-		compression_ratio,
+		compression_ratio : np.ndarray,
 		polytropic_efficiency = 1.0
 	) :
 
@@ -182,7 +161,7 @@ class TurboFanAnalysis :
 		pass
 
 	def setFanProperties(self,
-		compression_ratio,
+		compression_ratio : np.ndarray,
 		polytropic_efficiency = 1.0
 	) :
 
@@ -266,7 +245,7 @@ class TurboFanAnalysis :
 
 		pass
 
-	def setBypassRatio(self, alpha) :
+	def setBypassRatio(self, alpha : np.ndarray) :
 
 		if np.all(alpha >= 0) :
 
@@ -276,6 +255,28 @@ class TurboFanAnalysis :
 		else :
 
 			raise ValueError('Mass flow ratio must be greater than or equal to 0. Given value : ' + str(alpha))
+
+		pass
+
+	def setExitPressureRatios(self, P0_by_P9 : np.ndarray, P0_by_P19 : np.ndarray) :
+
+		if np.all(P0_by_P9 > 0) :
+
+			self._P0_by_P9 = P0_by_P9
+			self._analysis_complete = False
+
+		else :
+
+			raise ValueError('Pressure ratios (P0 / P9) must be greater than 0. Given value : ' + str(P0_by_P9))
+
+		if np.all(P0_by_P19 > 0) :
+
+			self._P0_by_P19 = P0_by_P19
+			self._analysis_complete = False
+
+		else :
+
+			raise ValueError('Pressure ratios (P0 / P19) must be greater than 0. Given value : ' + str(P0_by_P19))
 
 		pass
 
@@ -298,13 +299,6 @@ class TurboFanAnalysis :
 			'_c_pt',
 			'_h_PR',
 			'_gamma_t',
-			'_c_pc',
-			'_gamma_c',
-			'_R_c',
-			'_a_0',
-			'_P_0',
-			'_T_0',
-			'_M_0'
 		]
 
 		for attribute in attributes :
@@ -317,23 +311,23 @@ class TurboFanAnalysis :
 
 		pass
 
-	def _initializeRatios(self) :
+	def _initializeRatios(self, M_0, air:Atmosphere) :
 
-		self._tau_r = getStagnationTemperatureRatio(self._gamma_c, self._M_0)
-		self._pi_r  = getStagnationPressureRatio(self._gamma_c, self._M_0)
+		self._tau_r = getStagnationTemperatureRatio(CONST.kappa, M_0)
+		self._pi_r  = getStagnationPressureRatio(CONST.kappa, M_0)
 
-		self._pi_d  = self._pi_dmax * getRamRecovery(self._M_0)
+		self._pi_d  = self._pi_dmax * getRamRecovery(M_0)
 		
-		self._tau_l = self._c_pt * self._T_t4 / (self._c_pc * self._T_0)
+		self._tau_l = self._c_pt * self._T_t4 / (getHeatCapacity(CONST.kappa, CONST.R) * air.temperature)
 
-		self._tau_c = np.float_power(self._pi_c, (self._gamma_c - 1.0) / (self._gamma_c * self._e_c))
-		self._tau_f = np.float_power(self._pi_f, (self._gamma_c - 1.0) / (self._gamma_c * self._e_f))
+		self._tau_c = np.float_power(self._pi_c, (CONST.kappa - 1.0) / (CONST.kappa * self._e_c))
+		self._tau_f = np.float_power(self._pi_f, (CONST.kappa - 1.0) / (CONST.kappa * self._e_f))
 
 		pass
 
-	def _calculateFuelRatio(self) :
+	def _calculateFuelRatio(self, air:Atmosphere) :
 
-		self._f = (self._tau_l - self._tau_r * self._tau_c) / ((self._eta_b * self._h_PR / (self._c_pc * self._T_0)) - self._tau_l)
+		self._f = (self._tau_l - self._tau_r * self._tau_c) / ((self._eta_b * self._h_PR / (getHeatCapacity(CONST.kappa, CONST.R) * air.temperature)) - self._tau_l)
 
 		pass
 
@@ -344,95 +338,129 @@ class TurboFanAnalysis :
 
 		pass
 
-	def _calculateCoreExitConditions(self) :
+	def _calculateCoreExitConditions(self, air:Atmosphere) :
 
 		product_pi = self._pi_r * self._pi_d * self._pi_c * self._pi_b * self._pi_t * self._pi_n
 
-		self._P_9 = self._P_0 * product_pi / getStagnationPressureRatio(self._gamma_t, 1.0)
+		if hasattr(self, '_P0_by_P9') :
 
-		# if self._P_9 < self._P_0 :
+			self._P_9 = air.pressure / self._P0_by_P9
+			self._M_9 = np.sqrt(
+				(2.0 / (self._gamma_t - 1.0)) *
+				(np.float_power(product_pi * self._P0_by_P9, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
+			)
 
-		# 	self._P_9 = self._P_0
-		# 	self._M_9 = np.sqrt(
-		# 		(2.0 / (self._gamma_t - 1.0)) * 
-		# 		(np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
-		# 	)
+		else :
 
-		self._M_9 = np.where(
-			self._P_9 < self._P_0, 
-			(2.0 / (self._gamma_t - 1.0)) * 
-			(np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0),
-			1.0
-		)
+			self._P_9 = air.pressure * product_pi / getStagnationPressureRatio(self._gamma_t, 1.0)
 
-		self._P_9 = np.where(self._P_9 < self._P_0, self._P_0, self._P_9)
+			self._M_9 = np.where(self._P_9 < air.pressure,
+							np.sqrt(
+								(2.0 / (self._gamma_t - 1.0)) * 
+								(np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
+							),
+						# else
+							1.0
+			)
+
+			self._P_9 = np.where(self._P_9 < air.pressure, air.pressure, self._P_9)
 		
-		self._R_t = getGasConstant(self._gamma_t, self._c_pt)
-		self._T_9 = self._T_0 * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (self._c_pc / self._c_pt)
+		self._T_9 = air.temperature * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (getHeatCapacity(CONST.kappa, CONST.R) / self._c_pt)
 		self._V_9 = self._M_9 * getSonicSpeed(self._gamma_t, self._R_t, self._T_9)
 
 		pass
 
-	def _calculateFanExitConditions(self) :
+	def _calculateFanExitConditions(self, air:Atmosphere) :
 
 		product_pi = self._pi_r * self._pi_d * self._pi_f * self._pi_fn
 
-		self._P_19 = self._P_0 * product_pi / getStagnationPressureRatio(self._gamma_c, 1.0)
+		if hasattr(self, '_P0_by_P19') :
 
-		# if self._P_19 < self._P_0 :
+			self._P_19 = air.pressure / self._P0_by_P19
 
-		# 	self._P_19 = self._P_0
-		# 	self._M_19 = np.sqrt(
-		# 		(2.0 / (self._gamma_c - 1.0)) * 
-		# 		(np.float_power(product_pi, (self._gamma_c - 1.0) / self._gamma_c) - 1.0)
-		# 	)
+			self._M_19 = np.sqrt(
+				(2.0 / (CONST.kappa - 1.0)) *
+				(np.float_power(product_pi * self._P0_by_P19, (CONST.kappa - 1.0) / CONST.kappa) - 1.0)
+			)
 
-		self._M_19 = np.where(
-			self._P_19 < self._P_0,
-			(2.0 / (self._gamma_c - 1.0)) * 
-			(np.float_power(product_pi, (self._gamma_c - 1.0) / self._gamma_c) - 1.0),
-			1.0
+		else :
+
+			self._P_19 = air.pressure * product_pi / getStagnationPressureRatio(CONST.kappa, 1.0)
+
+			self._M_19 = np.where(self._P_19 < air.pressure,
+									np.sqrt(
+										(2.0 / (CONST.kappa - 1.0)) * 
+										(np.float_power(product_pi, (CONST.kappa - 1.0) / CONST.kappa) - 1.0)
+									),
+								# else
+									1.0
+			)
+
+			self._P_19 = np.where(self._P_19 < air.pressure, air.pressure, self._P_19)
+
+		self._T_19 = air.temperature * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(CONST.kappa, self._M_19))
+		self._V_19 = self._M_19 * air.speed_of_sound * np.sqrt(self._T_19 / air.temperature)
+
+		pass
+
+	def _calculateThrust(self, V_0, air:Atmosphere) :
+
+		self._ST_core = (1.0 / (1.0 + self._alpha)) * (
+			(1.0 + self._f) * self._V_9 - V_0 +
+			(1.0 + self._f) * self._R_t * (air.speed_of_sound ** 2) * self._T_9 * (1.0 - (air.pressure / self._P_9)) / (CONST.kappa * CONST.R * air.temperature * self._V_9)
 		)
 
-		self._P_19 = np.where(self._P_19 < self._P_0, self._P_0, self._P_19)
+		self._ST_fan = (self._alpha / (1.0 + self._alpha)) * (
+			self._V_19 - V_0 +
+			(air.speed_of_sound ** 2) * self._T_19 * (1.0 - (air.pressure / self._P_19)) / (CONST.kappa * air.temperature * self._V_19)
+		)
 
-		self._T_19 = self._T_0 * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(self._gamma_c, self._M_19))
-		self._V_19 = self._M_19 * self._a_0 * np.sqrt(self._T_19 / self._T_0)
+		self._ST = self._ST_core + self._ST_fan
+
+		pass
+
+	def _calculateEnergies(self, V_0) :
+
+		self._thrust_power = self._ST * V_0
+
+		self._Delta_KE = 0.5 * (
+			(1.0 + self._f) * (self._V_9 ** 2) - (V_0 ** 2) +
+			self._alpha * ((self._V_19 ** 2) - (V_0 ** 2))
+		) / (1.0 + self._alpha)
+
+		self._thermal_energy = self._f * self._h_PR / (1.0 + self._alpha)
 
 		pass
 
 	def _calculatePerformanceParameters(self) :
 
-		self._V_0 = self._M_0 * self._a_0
-
-		self._ST = (1.0 / (1.0 + self._alpha)) * (
-			(1.0 + self._f) * self._V_9 - self._V_0 +
-			(1.0 + self._f) * self._R_t * (self._a_0 ** 2) * self._T_9 * (1.0 - (self._P_0 / self._P_9)) / (self._gamma_c * self._R_c * self._T_0 * self._V_9)
-		) + (self._alpha / (1.0 + self._alpha)) * (
-			self._V_19 - self._V_0 +
-			(self._a_0 ** 2) * self._T_19 * (1.0 - (self._P_0 / self._P_19)) / (self._gamma_c * self._T_0 * self._V_19)
-		)
-
 		self._TSFC = self._f / ((1.0 + self._alpha) * self._ST)
 
-		Delta_KE = 0.5 * ( (1.0 + self._f) * (self._V_9 ** 2) + self._alpha * (self._V_19 ** 2) - (1.0 + self._alpha) * (self._V_0 ** 2) )
+		self._eta_P = self._thrust_power / self._Delta_KE
 
-		self._eta_T = Delta_KE / (self._f * self._h_PR)
-
-		self._eta_P = (1.0 + self._alpha) * self._ST * self._V_0 / Delta_KE
+		self._eta_T = self._Delta_KE / self._thermal_energy
 
 		pass
 
-	def performAnalysis(self) :
+	def performAnalysis(self, flight_speed:np.ndarray, flight_conditions:Atmosphere) :
+
+		if np.all(flight_speed > 0) :
+
+			M_0 = flight_speed / flight_conditions.speed_of_sound
+
+		else :
+
+			raise ValueError('Flight speed must be positive. Given value : ' + str(flight_speed))
 
 		if self._initialized :
 
-			self._initializeRatios()
-			self._calculateFuelRatio()
+			self._initializeRatios(M_0, flight_conditions)
+			self._calculateFuelRatio(flight_conditions)
 			self._performTurbineEnergyBalance()
-			self._calculateCoreExitConditions()
-			self._calculateFanExitConditions()
-			self._calculateFanExitConditions()
+			self._calculateCoreExitConditions(flight_conditions)
+			self._calculateFanExitConditions(flight_conditions)
+			self._calculateThrust(flight_speed, flight_conditions)
+			self._calculateEnergies(flight_speed)
 			self._calculatePerformanceParameters()
 
 			self._analysis_complete = True
@@ -442,64 +470,127 @@ class TurboFanAnalysis :
 
 			raise ExecError("Analysis needs to be initialized with initializeProblem()")
 
-	def getSpecificThrust(self) :
+	def getSpecificThrusts(self) :
 
 		if self._analysis_complete :
 
-			return self._ST
+			return np.stack((self._ST, self._ST_core, self._ST_fan), -1)
 
 		else :
 
 			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
-	def getThrustSpecificFuelConsumtion(self) :
+	def getSpecificFuelConsumtionRates(self) :
 
 		if self._analysis_complete :
 
-			return self._TSFC
+			return np.stack((self._TSFC, self._f / (1.0 + self._alpha)), -1)
 
 		else :
 
 			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
-	def getThermalEfficiency(self) :
+	def getEfficiencies(self) :
 
 		if self._analysis_complete :
 
-			return self._eta_T
+			return np.stack((self._eta_T * self._eta_P, self._eta_P, self._eta_T), -1)
 
 		else :
 
 			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
-	def getPropulsiveEfficiency(self) :
+	def getReferenceRatios(self) :
 
 		if self._analysis_complete :
 
-			return self._eta_P
+			return np.stack((self._pi_r, self._tau_r), -1)
 
 		else :
 
 			raise ExecError("Value not evaluated yet. Run performAnalysis()")
 
+	def getTurbineOperatingRatios(self) :
+
+		if self._analysis_complete :
+
+			return np.stack((self._pi_t, self._tau_t), -1)
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
+
+	def getCompressorOperatingRatios(self) :
+
+		if self._analysis_complete :
+
+			return np.stack((self._pi_c, self._tau_c), -1)
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
+
+	def getFanOperatingRatios(self) :
+
+		if self._analysis_complete :
+
+			return np.stack((self._pi_f, self._tau_f), -1)
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
+
+	def getCoreExitState(self) :
+
+		if self._analysis_complete :
+
+			return np.stack((self._M_9, self._P_9, self._T_9), -1)
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
+
+	def getFanExitState(self) :
+
+		if self._analysis_complete :
+
+			return np.stack((self._M_19, self._P_19, self._T_19), -1)
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
     
+	def getBurnerEnthalpyRatio(self) :
+
+		if self._analysis_complete :
+
+			return np.copy(self._tau_l)
+
+		else :
+
+			raise ExecError("Value not evaluated yet. Run performAnalysis()")
+
+
 if __name__ == '__main__' :
 
-	engine = TurboFanAnalysis()
+	engine = TurboFanEngine()
 
-	engine.setFlightMachNumber(0.8)
-	engine.setFlightConditions(5E3)
-	engine.setFuelInfo(10E8)
-	engine.setInletOutletProperties()
-	engine.setBurnerProperties()
-	engine.setCompressorProperties(25)
-	engine.setFanProperties(1.5)
-	engine.setTurbineProperties(1600)
-	engine.setBypassRatio(5)
+	engine.setFuelProperties(42.7984E6, 1.33, 1155.5568)
+	engine.setInletOutletProperties(0.99, 0.99, 0.99)
+	engine.setBurnerProperties(0.96, 0.99)
+	engine.setCompressorProperties(36, 0.9)
+	engine.setFanProperties(1.7, 0.89)
+	engine.setTurbineProperties(1666.67, 0.89, 0.99)
+	engine.setBypassRatio(8)
+	engine.setExitPressureRatios(0.9, 0.9)
 	
 	engine.initializeProblem()
-	engine.performAnalysis()
 
-	print(engine.getSpecificThrust())
+	flight_conditions = Atmosphere(12E3)
+	flight_speed = 0.8 * flight_conditions.speed_of_sound
 
+	engine.performAnalysis(flight_speed, flight_conditions)
+
+	print(engine.getEfficiencies())
+	
 	pass
