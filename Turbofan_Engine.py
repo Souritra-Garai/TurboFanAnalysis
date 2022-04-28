@@ -337,9 +337,17 @@ class TurboFanEngine :
 
 		pass
 
+	def _getCoreProductPi(self) :
+
+		return self._pi_r * self._pi_d * self._pi_c * self._pi_b * self._pi_t * self._pi_n
+
+	def _getFanProductPi(self) :
+
+		return self._pi_r * self._pi_d * self._pi_f * self._pi_fn
+
 	def _calculateCoreExitConditions(self, air:Atmosphere) :
 
-		product_pi = self._pi_r * self._pi_d * self._pi_c * self._pi_b * self._pi_t * self._pi_n
+		product_pi = self._getCoreProductPi()
 
 		if hasattr(self, '_P0_by_P9') :
 
@@ -353,7 +361,9 @@ class TurboFanEngine :
 
 			self._P_9 = air.pressure * product_pi / getStagnationPressureRatio(self._gamma_t, 1.0)
 
-			self._M_9 = np.where(self._P_9 < air.pressure,
+			condition = self._P_9 < air.pressure
+
+			self._M_9 = np.where(condition,
 							np.sqrt(
 								(2.0 / (self._gamma_t - 1.0)) * 
 								(np.float_power(product_pi, (self._gamma_t - 1.0) / self._gamma_t) - 1.0)
@@ -362,7 +372,7 @@ class TurboFanEngine :
 							1.0
 			)
 
-			self._P_9 = np.where(self._P_9 < air.pressure, air.pressure, self._P_9)
+			self._P_9[condition] = air.pressure
 		
 		self._T_9 = air.temperature * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (getHeatCapacity(CONST.kappa, CONST.R) / self._c_pt)
 		self._V_9 = self._M_9 * getSonicSpeed(self._gamma_t, self._R_t, self._T_9)
@@ -386,7 +396,9 @@ class TurboFanEngine :
 
 			self._P_19 = air.pressure * product_pi / getStagnationPressureRatio(CONST.kappa, 1.0)
 
-			self._M_19 = np.where(self._P_19 < air.pressure,
+			condition = self._P_19 < air.pressure
+
+			self._M_19 = np.where(condition,
 									np.sqrt(
 										(2.0 / (CONST.kappa - 1.0)) * 
 										(np.float_power(product_pi, (CONST.kappa - 1.0) / CONST.kappa) - 1.0)
@@ -395,7 +407,7 @@ class TurboFanEngine :
 									1.0
 			)
 
-			self._P_19 = np.where(self._P_19 < air.pressure, air.pressure, self._P_19)
+			self._P_19[condition] = air.pressure
 
 		self._T_19 = air.temperature * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(CONST.kappa, self._M_19))
 		self._V_19 = self._M_19 * air.speed_of_sound * np.sqrt(self._T_19 / air.temperature)
@@ -420,12 +432,15 @@ class TurboFanEngine :
 
 	def _calculateEnergies(self, V_0) :
 
-		self._thrust_power = self._ST * V_0
+		self._thrust_power_core = self._ST_core * V_0
+		self._thrust_power_fan	= self._ST_fan * V_0
 
-		self._Delta_KE = 0.5 * (
-			(1.0 + self._f) * (self._V_9 ** 2) - (V_0 ** 2) +
-			self._alpha * ((self._V_19 ** 2) - (V_0 ** 2))
-		) / (1.0 + self._alpha)
+		self._thrust_power		= self._thrust_power_core + self._thrust_power_fan
+
+		self._Delta_KE_fan	= 0.5 * self._alpha * ((self._V_19 ** 2) - (V_0 ** 2)) / (1.0 + self._alpha)
+		self._Delta_KE_core = 0.5 * ((1.0 + self._f) * (self._V_9 ** 2) - (V_0 ** 2)) / (1.0 + self._alpha)
+
+		self._Delta_KE = self._Delta_KE_core + self._Delta_KE_fan
 
 		self._thermal_energy = self._f * self._h_PR / (1.0 + self._alpha)
 
@@ -435,10 +450,90 @@ class TurboFanEngine :
 
 		self._TSFC = self._f / ((1.0 + self._alpha) * self._ST)
 
-		self._eta_P = self._thrust_power / self._Delta_KE
+		self._eta_P			= self._thrust_power / self._Delta_KE
+		self._eta_P_fan		= self._thrust_power_fan / self._Delta_KE_fan
+		self._eta_P_core	= self._thrust_power_core / self._Delta_KE_core
 
 		self._eta_T = self._Delta_KE / self._thermal_energy
 
+		pass
+
+	def _rectifyCoreExitConditions(self, V_0, air:Atmosphere) :
+
+		condition = self._eta_P_core > 1
+
+		product_pi = self._getCoreProductPi()
+
+		M9_l = self._M_9[condition]
+		M9_u = np.ones_like(M9_l) * 2.0
+
+		self._M_9[condition] = 0.5 * (M9_u + M9_l)
+		
+		self._P_9 = air.pressure * product_pi / getStagnationPressureRatio(self._gamma_t, self._M_9)
+		self._T_9 = air.temperature * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (getHeatCapacity(CONST.kappa, CONST.R) / self._c_pt)
+		self._V_9 = self._M_9 * getSonicSpeed(self._gamma_t, self._R_t, self._T_9)
+
+		self._calculateThrust(V_0, air)
+		self._calculateEnergies(V_0)
+		self._calculatePerformanceParameters()
+
+		while not np.all(np.isclose(self._eta_P_core[condition], 0.99, atol=0.009)) :
+
+			go_up = self._eta_P_core > 0.99
+
+			M9_l[go_up]	 = self._M_9[go_up]
+			M9_u[~go_up] = self._M_9[~go_up]
+
+			self._M_9[condition] = 0.5 * (M9_u + M9_l)
+		
+			self._P_9 = air.pressure * product_pi / getStagnationPressureRatio(self._gamma_t, self._M_9)
+			self._T_9 = air.temperature * (self._tau_l * self._tau_t / getStagnationTemperatureRatio(self._gamma_t, self._M_9)) * (getHeatCapacity(CONST.kappa, CONST.R) / self._c_pt)
+			self._V_9 = self._M_9 * getSonicSpeed(self._gamma_t, self._R_t, self._T_9)
+
+			self._calculateThrust(V_0, air)
+			self._calculateEnergies(V_0)
+			self._calculatePerformanceParameters()
+
+		pass
+
+	def _rectifyFanExitConditions(self, V_0, air:Atmosphere) :
+
+		condition = self._eta_P_fan > 1
+
+		product_pi = self._getFanProductPi()
+
+		M19_l = self._M_19[condition]
+		M19_u = np.ones_like(M19_l) * 2.0
+
+		self._M_19[condition] = 0.5 * (M19_u + M19_l)
+		
+		self._P_19 = air.pressure * product_pi / getStagnationPressureRatio(CONST.kappa, self._M_19)
+		self._T_19 = air.temperature * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(CONST.kappa, self._M_19))
+		self._V_19 = self._M_19 * air.speed_of_sound * np.sqrt(self._T_19 / air.temperature)
+
+		self._calculateThrust(V_0, air)
+		self._calculateEnergies(V_0)
+		self._calculatePerformanceParameters()
+
+		while not np.all(np.isclose(self._eta_P_fan[condition], 0.99, atol=0.009)) :
+
+			go_up = self._eta_P_fan > 0.99
+
+			M19_l[go_up]	 = self._M_19[go_up]
+			M19_u[~go_up] = self._M_19[~go_up]
+
+			self._M_19[condition] = 0.5 * (M19_u + M19_l)
+		
+			self._M_19[condition] = 0.5 * (M19_u + M19_l)
+		
+			self._P_19 = air.pressure * product_pi / getStagnationPressureRatio(CONST.kappa, self._M_19)
+			self._T_19 = air.temperature * (self._tau_r * self._tau_f / getStagnationTemperatureRatio(CONST.kappa, self._M_19))
+			self._V_19 = self._M_19 * air.speed_of_sound * np.sqrt(self._T_19 / air.temperature)
+
+			self._calculateThrust(V_0, air)
+			self._calculateEnergies(V_0)
+			self._calculatePerformanceParameters()
+		
 		pass
 
 	def performAnalysis(self, flight_speed:np.ndarray, flight_conditions:Atmosphere) :
@@ -461,6 +556,9 @@ class TurboFanEngine :
 			self._calculateThrust(flight_speed, flight_conditions)
 			self._calculateEnergies(flight_speed)
 			self._calculatePerformanceParameters()
+
+			self._rectifyCoreExitConditions(flight_speed, flight_conditions)
+			self._rectifyFanExitConditions(flight_speed, flight_conditions)
 
 			self._analysis_complete = True
 			pass
@@ -493,7 +591,13 @@ class TurboFanEngine :
 
 		if self._analysis_complete :
 
-			return np.stack((self._eta_T * self._eta_P, self._eta_P, self._eta_T), -1)
+			return np.stack((
+				self._eta_T * self._eta_P,
+				self._eta_T,
+				self._eta_P,
+				self._eta_P_core,
+				self._eta_P_fan
+			), -1)
 
 		else :
 
@@ -580,7 +684,7 @@ if __name__ == '__main__' :
 	engine.setFanProperties(1.7, 0.89)
 	engine.setTurbineProperties(1666.67, 0.89, 0.99)
 	engine.setBypassRatio(8)
-	engine.setExitPressureRatios(0.9, 0.9)
+	engine.setExitPressureRatios(0.7675, 0.7675)
 	
 	engine.initializeProblem()
 
@@ -590,5 +694,7 @@ if __name__ == '__main__' :
 	engine.performAnalysis(flight_speed, flight_conditions)
 
 	print(engine.getEfficiencies())
+	print(engine.getFanExitState())
+	print(engine.getCoreExitState())
 	
 	pass

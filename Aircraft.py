@@ -1,7 +1,7 @@
 import numpy as np
 
 from Turbofan_Engine import TurboFanEngine
-from ambiance import Atmosphere, CONST
+from ambiance import Atmosphere
 
 class Aircraft :
 
@@ -20,8 +20,8 @@ class Aircraft :
 
         self.load_factor = {
             'cruise'    : 1.0,
-            'takeoff'   : 1.0,
-            'landing'   : 1.0
+            'takeoff'   : 3.04,
+            'landing'   : 1.2
         }
         
         pass
@@ -72,7 +72,7 @@ if __name__ == '__main__' :
 
     aircraft.load_factor['takeoff'] = 3.04
     aircraft.load_factor['landing'] = 1.2
-    
+
     engine = TurboFanEngine()
 
     engine.setFuelProperties(42.7984E6, 1.33, 1155.5568)
