@@ -279,6 +279,41 @@ class TurboFanEngine :
 
 		pass
 
+	def setQuickParameters(self,
+		compressor_compression_ratio,
+		fan_compression_ratio,
+		bypass_ratio
+	) :
+
+		if np.all(compressor_compression_ratio >= 1) :
+
+			self._pi_c = compressor_compression_ratio
+			self._analysis_complete = False
+
+		else :
+
+			raise ValueError('Compression ratio must be greater than or equal to 1. Given value : ' + str(compressor_compression_ratio))
+
+		if np.all(fan_compression_ratio >= 1) :
+
+			self._pi_f = fan_compression_ratio
+			self._analysis_complete = False
+
+		else :
+
+			raise ValueError('Compression ratio must be greater than or equal to 1. Given value : ' + str(fan_compression_ratio))
+
+		if np.all(bypass_ratio >= 0) :
+
+			self._alpha = bypass_ratio
+			self._analysis_complete = False
+
+		else :
+
+			raise ValueError('Bypass ratio must be greater than or equal to 0. Given value : ' + str(bypass_ratio))
+
+		pass
+
 	def initializeProblem(self) :
 
 		attributes = [
@@ -437,8 +472,8 @@ class TurboFanEngine :
 
 		self._thrust_power		= self._thrust_power_core + self._thrust_power_fan
 
-		self._Delta_KE_fan	= 0.5 * self._alpha * ((self._V_19 ** 2) - (V_0 ** 2)) / (1.0 + self._alpha)
-		self._Delta_KE_core = 0.5 * ((1.0 + self._f) * (self._V_9 ** 2) - (V_0 ** 2)) / (1.0 + self._alpha)
+		self._Delta_KE_fan	= 0.5 * self._alpha * ((self._V_19 - V_0) ** 2) / (1.0 + self._alpha)
+		self._Delta_KE_core = 0.5 * ((self._V_9 - V_0) ** 2) / (1.0 + self._alpha)
 
 		self._Delta_KE = self._Delta_KE_core + self._Delta_KE_fan
 
@@ -450,11 +485,11 @@ class TurboFanEngine :
 
 		self._TSFC = self._f / ((1.0 + self._alpha) * self._ST)
 
-		self._eta_P			= self._thrust_power / self._Delta_KE
-		self._eta_P_fan		= self._thrust_power_fan / self._Delta_KE_fan
-		self._eta_P_core	= self._thrust_power_core / self._Delta_KE_core
+		self._eta_P			= self._thrust_power / (self._thrust_power + self._Delta_KE)
+		self._eta_P_fan		= self._thrust_power_fan / (self._thrust_power_fan + self._Delta_KE_fan)
+		self._eta_P_core	= self._thrust_power_core / (self._thrust_power_core + self._Delta_KE_core)
 
-		self._eta_T = self._Delta_KE / self._thermal_energy
+		self._eta_T = (self._thrust_power + self._Delta_KE) / self._thermal_energy
 
 		pass
 
@@ -557,8 +592,8 @@ class TurboFanEngine :
 			self._calculateEnergies(flight_speed)
 			self._calculatePerformanceParameters()
 
-			self._rectifyCoreExitConditions(flight_speed, flight_conditions)
-			self._rectifyFanExitConditions(flight_speed, flight_conditions)
+			# self._rectifyCoreExitConditions(flight_speed, flight_conditions)
+			# self._rectifyFanExitConditions(flight_speed, flight_conditions)
 
 			self._analysis_complete = True
 			pass
@@ -684,7 +719,7 @@ if __name__ == '__main__' :
 	engine.setFanProperties(1.7, 0.89)
 	engine.setTurbineProperties(1666.67, 0.89, 0.99)
 	engine.setBypassRatio(8)
-	engine.setExitPressureRatios(0.7675, 0.7675)
+	# engine.setExitPressureRatios(0.9, 0.9)
 	
 	engine.initializeProblem()
 
@@ -693,8 +728,8 @@ if __name__ == '__main__' :
 
 	engine.performAnalysis(flight_speed, flight_conditions)
 
-	print(engine.getEfficiencies())
-	print(engine.getFanExitState())
-	print(engine.getCoreExitState())
+	print('Specific Thrust :', engine.getSpecificThrusts()[..., :1], 'N / (kg/s)')
+	print('Thrust Specific Fuel Consumption :', engine.getSpecificFuelConsumtionRates()[..., :1], '(kg/s) / N')
+	print('Efficiencies [Overall, Thermal, Propulsive] :', engine.getEfficiencies()[..., :3])
 	
 	pass

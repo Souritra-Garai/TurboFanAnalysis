@@ -23,6 +23,12 @@ class Aircraft :
             'takeoff'   : 3.04,
             'landing'   : 1.2
         }
+
+        self.phi_inlet  = 0.02
+        self.phi_nozzle = 0.01
+
+        self.engine_thrust      = 0.0
+        self.required_thrust    = 0.0
         
         pass
 
@@ -38,13 +44,19 @@ class Aircraft :
 
         return self.load_factor[flight_mode] * self.getMass() * air.grav_accel
 
+    def getTSFC(self, engine:TurboFanEngine) :
+
+        return engine.getSpecificFuelConsumtionRates()[..., 1] / (1 - self.phi_inlet - self.phi_nozzle)
+
+    def getThrust(self, engine:TurboFanEngine, density, speed) :
+
+        return engine.getSpecificThrusts()[..., 0] * density * speed * self.area_inlet * (1 - self.phi_inlet - self.phi_nozzle)
+
     def fly_aircraft(self, time, speed, altitude, engine:TurboFanEngine, flight_mode = 'cruise') :
 
         air = Atmosphere(altitude)
         
         engine.performAnalysis(speed, air)
-
-        TSFC = engine.getSpecificFuelConsumtionRates()[..., 1]
 
         dynamic_pressure = 0.5 * air.density * (speed ** 2)
 
@@ -52,41 +64,45 @@ class Aircraft :
 
         C_D = self.getDragCoefficient(C_L)
 
-        self.mass_fuel = self.mass_fuel - self.getMass() * (1.0 - np.exp(- C_L * air.grav_accel * time / (C_D * TSFC)))
+        self.mass_fuel = self.mass_fuel - self.getMass() * (1.0 - np.exp(- C_L * air.grav_accel * time / (C_D * self.getTSFC())))
 
-        return 0.5 * C_D * dynamic_pressure * self.area_wing <= engine.getSpecificThrusts()[..., 0] * air.density * speed * self.area_inlet
+        self.required_thrust = 0.5 * C_D * dynamic_pressure * self.area_wing
+
+        self.engine_thrust = self.getThrust(engine, air.density, speed)
+
+        return self.required_thrust <= self.engine_thrust
 
 if __name__ == '__main__' :
 
-    aircraft = Aircraft()
+	aircraft = Aircraft()
 
-    aircraft.area_inlet = np.pi * ((2.5 / 2) ** 2)  # m2
-    aircraft.area_wing  = 102.0 # m2
+	aircraft.area_inlet = np.pi * ((2.5 / 2) ** 2)  # m2
+	aircraft.area_wing  = 102.0 # m2
 
-    aircraft.mass_fuel = 21.685E3       # kg
-    aircraft.mass_payload = 20.882E3    # kg
-    aircraft.mass_structure = 41.145E3  # kg
+	aircraft.mass_fuel = 21.685E3       # kg
+	aircraft.mass_payload = 20.882E3    # kg
+	aircraft.mass_structure = 41.145E3  # kg
 
-    aircraft.C_D0 = 0.024
-    aircraft.k_1 = 0.0366
+	aircraft.C_D0 = 0.024
+	aircraft.k_1 = 0.0366
 
-    aircraft.load_factor['takeoff'] = 3.04
-    aircraft.load_factor['landing'] = 1.2
+	aircraft.load_factor['takeoff'] = 3.04
+	aircraft.load_factor['landing'] = 1.2
 
-    engine = TurboFanEngine()
+	engine = TurboFanEngine()
 
-    engine.setFuelProperties(42.7984E6, 1.33, 1155.5568)
-    engine.setInletOutletProperties(0.99, 0.99, 0.99)
-    engine.setBurnerProperties(0.96, 0.99)
-    engine.setCompressorProperties(36, 0.9)
-    engine.setFanProperties(1.7, 0.89)
-    engine.setTurbineProperties(1666.67, 0.89, 0.99)
-    engine.setBypassRatio(8)
-    engine.setExitPressureRatios(0.9, 0.9)
+	engine.setFuelProperties(42.7984E6, 1.33, 1155.5568)
+	engine.setInletOutletProperties(0.99, 0.99, 0.99)
+	engine.setBurnerProperties(0.96, 0.99)
+	engine.setCompressorProperties(36, 0.9)
+	engine.setFanProperties(1.7, 0.89)
+	engine.setTurbineProperties(1666.67, 0.89, 0.99)
+	engine.setBypassRatio(8)
+	engine.setExitPressureRatios(0.9, 0.9)
 
-    engine.initializeProblem()
+	engine.initializeProblem()
 
-    flight_conditions = Atmosphere(12E3)
-    flight_speed = 0.8 * flight_conditions.speed_of_sound
+	flight_conditions = Atmosphere(12E3)
+	flight_speed = 0.8 * flight_conditions.speed_of_sound
 
-    print(aircraft.fly_aircraft(10, flight_speed, 12E3, engine, 'cruise'))
+	print(aircraft.fly_aircraft(10, flight_speed, 12E3, engine, 'cruise'))
