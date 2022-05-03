@@ -1,5 +1,7 @@
 import ipywidgets as widgets
 
+from Turbofan_Engine import TurboFanEngine, Atmosphere
+
 flight_mach_number_tbox = widgets.FloatText(
     value   = 0.85,
     min     = 0.5,
@@ -72,64 +74,56 @@ diffuser_pressure_ratio_tbox = widgets.FloatText(
 	value	= 0.995,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 compressor_efficiency_tbox = widgets.FloatText(
 	value	= 0.9,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 fan_efficiency_tbox = widgets.FloatText(
 	value	= 0.89,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 burner_pressure_ratio_tbox = widgets.FloatText(
 	value	= 0.95,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 burner_efficiency_tbox = widgets.FloatText(
 	value	= 0.999,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 turbine_efficiency_tbox = widgets.FloatText(
 	value	= 0.90,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 mechanical_shaft_efficiency_tbox = widgets.FloatText(
 	value	= 0.97,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 nozzle_pressure_ratio_tbox = widgets.FloatText(
 	value	= 0.995,
 	min		= 0.0,
 	max		= 1.0,
-	step	= 0.001,
-	readout_format = '.3f'
+	step	= 0.001
 )
 
 turbine_temperature_tbox = widgets.FloatText(
@@ -209,5 +203,181 @@ def on_tech_level_select(change) :
 
 	pass
 
-
 tech_level_dropdown.observe(on_tech_level_select, names='value')
+
+fuel_dropdown = widgets.Dropdown(
+	options = [
+		('JP - 1', 0)
+	],
+	value = 0
+)
+
+fuel_info_dict = {
+	'h_PR'		:	(42.7984E6),
+	'c_pt'		:	(1155.5568),
+	'gamma_t'	:	(1.33)
+}
+
+fuel_heating_value_tbox = widgets.FloatText(
+	value	= 42.7984,
+	step	= 0.1,
+	min		= 0.0
+)
+
+combustion_products_heat_capacity_tbox = widgets.FloatText(
+	value	= 1155.5568,
+	min		= 0.0,
+	step	= 0.1
+)
+
+combustion_products_gamma_tbox = widgets.FloatText(
+	value	= 1.33,
+	min		= 0.0,
+	step	= 0.01,
+)
+
+fuel_gridbox = widgets.GridspecLayout(7, 3)
+
+fuel_gridbox[0, 0] = widgets.Label('Fuel', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[0, 1] = fuel_dropdown
+
+fuel_gridbox[1, 1] = widgets.Label('--or--')
+
+fuel_gridbox[2, 0] = widgets.Label('Fuel')
+
+fuel_gridbox[3, 0] = widgets.Label('Heating Value', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[3, 1] = fuel_heating_value_tbox
+fuel_gridbox[3, 2] = widgets.Label('MJ / kg')
+
+fuel_gridbox[4, 0] = widgets.Label('Combustion Product Gases')
+
+fuel_gridbox[5, 0] = widgets.Label('Heat Capacity', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[5, 1] = combustion_products_heat_capacity_tbox
+fuel_gridbox[5, 2] = widgets.Label('J / kg - K')
+
+fuel_gridbox[6, 0] = widgets.Label('gamma', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[6, 1] = combustion_products_gamma_tbox
+
+def on_fuel_select(change) :
+
+	i = change['new']
+
+	fuel_heating_value_tbox.value = fuel_info_dict['h_PR'][i]
+
+	combustion_products_heat_capacity_tbox.value = fuel_info_dict['c_pt'][i]
+	combustion_products_gamma_tbox.value = fuel_info_dict['gamma_t'][i]
+
+	pass
+
+fuel_dropdown.observe(on_fuel_select, names='value')
+fuel_dropdown = widgets.Dropdown(
+	options = [
+		('JP - 1', 0)
+	],
+	value = 0
+)
+
+fuel_info_dict = {
+	'h_PR'		:	(42.7984E6),
+	'c_pt'		:	(1155.5568),
+	'gamma_t'	:	(1.33)
+}
+
+fuel_heating_value_tbox = widgets.FloatText(
+	value	= 42.7984,
+	step	= 0.1,
+	min		= 0.0
+)
+
+combustion_products_heat_capacity_tbox = widgets.FloatText(
+	value	= 1155.5568,
+	min		= 0.0,
+	step	= 0.1
+)
+
+combustion_products_gamma_tbox = widgets.FloatText(
+	value	= 1.33,
+	min		= 0.0,
+	step	= 0.01,
+)
+
+fuel_gridbox = widgets.GridspecLayout(7, 3)
+
+fuel_gridbox[0, 0] = widgets.Label('Fuel', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[0, 1] = fuel_dropdown
+
+fuel_gridbox[1, 1] = widgets.Label('--or--')
+
+fuel_gridbox[2, 0] = widgets.Label('Fuel')
+
+fuel_gridbox[3, 0] = widgets.Label('Heating Value', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[3, 1] = fuel_heating_value_tbox
+fuel_gridbox[3, 2] = widgets.Label('MJ / kg')
+
+fuel_gridbox[4, 0] = widgets.Label('Combustion Product Gases')
+
+fuel_gridbox[5, 0] = widgets.Label('Heat Capacity', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[5, 1] = combustion_products_heat_capacity_tbox
+fuel_gridbox[5, 2] = widgets.Label('J / kg - K')
+
+fuel_gridbox[6, 0] = widgets.Label('gamma', layout = widgets.Layout(display="flex", justify_content="flex-end"))
+fuel_gridbox[6, 1] = combustion_products_gamma_tbox
+
+def on_fuel_select(change) :
+
+	i = change['new']
+
+	fuel_heating_value_tbox.value = fuel_info_dict['h_PR'][i]
+
+	combustion_products_heat_capacity_tbox.value = fuel_info_dict['c_pt'][i]
+	combustion_products_gamma_tbox.value = fuel_info_dict['gamma_t'][i]
+
+	pass
+
+fuel_dropdown.observe(on_fuel_select, names='value')
+
+def setUpEngine(engine : TurboFanEngine) :
+
+	engine.setFuelProperties(
+		fuel_heating_value_tbox.value * 1E6,
+		combustion_products_gamma_tbox.value,
+		combustion_products_heat_capacity_tbox.value
+	)
+
+	engine.setInletOutletProperties(
+		diffuser_pressure_ratio_tbox.value,
+		nozzle_pressure_ratio_tbox.value,
+		nozzle_pressure_ratio_tbox.value
+	)
+
+	engine.setBurnerProperties(
+		burner_pressure_ratio_tbox.value,
+		burner_efficiency_tbox.value
+	)
+
+	engine.setCompressorProperties(
+		compressor_compression_ratio_slider.value,
+		compressor_efficiency_tbox.value
+	)
+
+	engine.setFanProperties(
+		fan_compression_ratio_slider.value,
+		fan_efficiency_tbox.value
+	)
+
+	engine.setTurbineProperties(
+		turbine_temperature_tbox.value,
+		turbine_efficiency_tbox.value,
+		mechanical_shaft_efficiency_tbox.value
+	)
+
+	engine.setBypassRatio(bypass_ratio_slider.value)
+	
+	engine.initializeProblem()
+
+	flight_conditions = Atmosphere(flight_altitude_slider.value)
+	flight_speed = flight_mach_number_tbox.value * flight_conditions.speed_of_sound
+
+	engine.performAnalysis(flight_speed, flight_conditions)
+
+	pass
